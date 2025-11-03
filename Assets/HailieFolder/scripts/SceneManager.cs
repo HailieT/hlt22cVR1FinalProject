@@ -21,16 +21,7 @@ public class GameManager : MonoBehaviour
 
     private void Awake()
     {
-        // Implement Singleton pattern
-        if (Instance == null)
-        {
-            Instance = this;
-            DontDestroyOnLoad(gameObject); // Persist across scenes
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
+    
     }
 
     private void Start()
@@ -70,6 +61,7 @@ public class GameManager : MonoBehaviour
     public void LoadGameScene(string sceneName)
     {
         SetGameState(GameState.Loading);
+        Debug.Log($"Loading scene {sceneName}");
         SceneManager.LoadScene(sceneName);
     }
 
