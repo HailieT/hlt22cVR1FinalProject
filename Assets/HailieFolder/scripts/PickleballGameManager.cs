@@ -1,325 +1,299 @@
 using UnityEngine;
-using System.Collections.Generic;
+using System.Collections;
+using TMPro; // Use this if you're using TextMeshPro for UI
 
-// Enum for court zones
-public enum CourtZone
-{
-    LeftServiceBox,
-    RightServiceBox,
-    LeftKitchen,
-    RightKitchen,
-    LeftBackcourt,
-    RightBackcourt,
-    OutOfBounds
-}
-
-// Enum for game states
-public enum GameState
-{
-    WaitingForServe,
-    ServingPlayer1,
-    ServingPlayer2,
-    InPlay,
-    PointScored
-}
-
-// Class to store ball hit data
-public class BallHitData
-{
-    public Vector3 hitPosition;
-    public Vector3 hitVelocity;
-    public float hitTime;
-    public bool wasPlayerHit;
-    public int playerNumber;
-
-    public BallHitData(Vector3 pos, Vector3 vel, float time, bool playerHit, int player)
-    {
-        hitPosition = pos;
-        hitVelocity = vel;
-        hitTime = time;
-        wasPlayerHit = playerHit;
-        playerNumber = player;
-    }
-}
+// --- PickleballGameManager.cs ---
+// Attach this script to an empty GameObject in your scene, e.g., "_GameManager".
+// This script will act as the "brain" for your game, handling scoring, state, and rules.
 
 public class PickleballGameManager : MonoBehaviour
 {
-    [Header("Court Dimensions (Standard Pickleball Court)")]
-    public Vector3 courtCenter = Vector3.zero;
-    public float courtLength = 13.41f; // 44 feet in meters
-    public float courtWidth = 6.1f;    // 20 feet in meters
-    public float kitchenDepth = 2.13f; // 7 feet in meters
+    // --- Singleton Pattern ---
+    // This makes it easy for other scripts (like the ball) to find the one and only GameManager.
+    public static PickleballGameManager Instance { get; private set; }
 
-    [Header("Game Objects")]
-    public Transform ball;
-    public Transform player1Paddle;
-    public Transform player2Paddle;
+    [Header("Player & Paddle Setup")]
+    public GameObject player1Paddle;
+    public GameObject player2Paddle;
 
-    [Header("Game State")]
-    public GameState currentState = GameState.WaitingForServe;
-    public int player1Score = 0;
-    public int player2Score = 0;
-    public int servingPlayer = 1;
-    public bool isServerOnRightSide = true;
+    [Header("Ball & Spawn Setup")]
+    public GameObject ballPrefab; // Your pickleball prefab
+    [Tooltip("Position for P1 serving from the RIGHT (Deuce) side")]
+    public Transform player1RightServePos;
+    [Tooltip("Position for P1 serving from the LEFT (Ad) side")]
+    public Transform player1LeftServePos;
+    [Tooltip("Position for P2 serving from the RIGHT (Deuce) side")]
+    public Transform player2RightServePos;
+    [Tooltip("Position for P2 serving from the LEFT (Ad) side")]
+    public Transform player2LeftServePos;
 
-    [Header("Tracking")]
-    public List<BallHitData> hitHistory = new List<BallHitData>();
-    public int bounceCount = 0;
-    public CourtZone lastBounceZone = CourtZone.OutOfBounds;
-    public bool hasBallBouncedOnServe = false;
+    [Header("Court Zone Colliders")]
+    [Tooltip("Assign the BoxCollider (set to IsTrigger) for P1's RIGHT (Deuce) court area")]
+    public Collider player1RightCourt;
+    [Tooltip("Assign the BoxCollider (set to IsTrigger) for P1's LEFT (Ad) court area")]
+    public Collider player1LeftCourt;
+    [Tooltip("Assign the BoxCollider (set to IsTrigger) for P1's kitchen (NVZ)")]
+    public Collider player1Kitchen;
+    [Tooltip("Assign the BoxCollider (set to IsTrigger) for P2's RIGHT (Deuce) court area")]
+    public Collider player2RightCourt;
+    [Tooltip("Assign the BoxCollider (set to IsTrigger) for P2's LEFT (Ad) court area")]
+    public Collider player2LeftCourt;
+    [Tooltip("Assign the BoxCollider (set to IsTrigger) for P2's kitchen (NVZ)")]
+    public Collider player2Kitchen;
+    [Tooltip("Assign a large BoxCollider (IsTrigger) that surrounds the court for out-of-bounds")]
+    public Collider outOfBoundsZone;
 
-    private Vector3 lastBallPosition;
-    private Rigidbody ballRb;
+    [Header("Scoring UI (Optional)")]
+    public TextMeshProUGUI player1ScoreText;
+    public TextMeshProUGUI player2ScoreText;
 
-    void Start()
+    // --- Private Game State Variables ---
+    private int player1Score;
+    private int player2Score;
+
+    private GameObject currentBall;
+    private GameObject lastPaddleHit; // Tracks who hit the ball last
+    private int bounceCount;
+    private bool pointInProgress;
+    private bool isPlayer1Serving; // Tracks whose turn it is to serve
+    private bool isServing; // Is this the first hit of the point?
+    private bool isPlayer1ServingRightSide; // Tracks which side P1 is serving from (Deuce/Ad)
+    private bool isPlayer2ServingRightSide; // Tracks which side P2 is serving from (Deuce/Ad)
+
+    private void Awake()
     {
-        if (ball != null)
+        // Set up the Singleton
+        if (Instance != null && Instance != this)
         {
-            ballRb = ball.GetComponent<Rigidbody>();
-            lastBallPosition = ball.position;
-        }
-    }
-
-    void Update()
-    {
-        if (ball != null)
-        {
-            CheckBallBounce();
-        }
-    }
-
-    // Detect when ball hits the ground
-    void CheckBallBounce()
-    {
-        // Simple ground detection - adjust based on your ground height
-        if (ball.position.y < 0.1f && lastBallPosition.y >= 0.1f)
-        {
-            OnBallBounce(ball.position);
-        }
-        lastBallPosition = ball.position;
-    }
-
-    // Called when ball bounces on court
-    public void OnBallBounce(Vector3 bouncePosition)
-    {
-        bounceCount++;
-        CourtZone zone = GetCourtZone(bouncePosition);
-        lastBounceZone = zone;
-
-        Debug.Log($"Ball bounced in zone: {zone}, Bounce count: {bounceCount}");
-
-        ProcessBounce(zone);
-    }
-
-    // Called when paddle hits ball
-    public void OnBallHit(Transform paddle, Vector3 contactPoint, Vector3 velocity)
-    {
-        int playerNum = (paddle == player1Paddle) ? 1 : 2;
-        BallHitData hitData = new BallHitData(contactPoint, velocity, Time.time, true, playerNum);
-        hitHistory.Add(hitData);
-
-        Debug.Log($"Player {playerNum} hit the ball at {contactPoint}");
-    }
-
-    // Determine which zone the ball landed in
-    public CourtZone GetCourtZone(Vector3 position)
-    {
-        Vector3 localPos = position - courtCenter;
-
-        // Check if out of bounds
-        if (Mathf.Abs(localPos.x) > courtWidth / 2 || Mathf.Abs(localPos.z) > courtLength / 2)
-        {
-            return CourtZone.OutOfBounds;
-        }
-
-        bool isLeftSide = localPos.x < 0;
-        float absZ = Mathf.Abs(localPos.z);
-
-        // Kitchen zone (no-volley zone)
-        if (absZ < kitchenDepth)
-        {
-            return isLeftSide ? CourtZone.LeftKitchen : CourtZone.RightKitchen;
-        }
-        // Service box zone
-        else if (absZ < courtLength / 4)
-        {
-            return isLeftSide ? CourtZone.LeftServiceBox : CourtZone.RightServiceBox;
-        }
-        // Backcourt zone
-        else
-        {
-            return isLeftSide ? CourtZone.LeftBackcourt : CourtZone.RightBackcourt;
-        }
-    }
-
-    // Process the bounce based on game state
-    void ProcessBounce(CourtZone zone)
-    {
-        switch (currentState)
-        {
-            case GameState.ServingPlayer1:
-            case GameState.ServingPlayer2:
-                ProcessServeBounce(zone);
-                break;
-
-            case GameState.InPlay:
-                ProcessInPlayBounce(zone);
-                break;
-        }
-    }
-
-    // Handle serve bounce rules
-    void ProcessServeBounce(CourtZone zone)
-    {
-        if (!hasBallBouncedOnServe)
-        {
-            // First bounce must be in diagonal service box
-            bool isValidServe = false;
-
-            if (servingPlayer == 1 && isServerOnRightSide)
-            {
-                isValidServe = (zone == CourtZone.LeftServiceBox);
-            }
-            else if (servingPlayer == 1 && !isServerOnRightSide)
-            {
-                isValidServe = (zone == CourtZone.RightServiceBox);
-            }
-            else if (servingPlayer == 2 && isServerOnRightSide)
-            {
-                isValidServe = (zone == CourtZone.LeftServiceBox);
-            }
-            else if (servingPlayer == 2 && !isServerOnRightSide)
-            {
-                isValidServe = (zone == CourtZone.RightServiceBox);
-            }
-
-            if (isValidServe)
-            {
-                hasBallBouncedOnServe = true;
-                Debug.Log("Valid serve!");
-            }
-            else
-            {
-                Debug.Log("Serve fault!");
-                HandleFault();
-            }
+            Destroy(gameObject);
         }
         else
         {
-            // Second bounce (receiving player's side)
-            currentState = GameState.InPlay;
+            Instance = this;
         }
     }
 
-    // Handle in-play bounce rules
-    void ProcessInPlayBounce(CourtZone zone)
+    private void Start()
     {
-        if (zone == CourtZone.OutOfBounds)
+        // Start a new game when the scene loads
+        StartNewGame();
+    }
+
+    /// <summary>
+    /// Initializes a new game, resetting scores and starting the first serve.
+    /// </summary>
+    public void StartNewGame()
+    {
+        player1Score = 0;
+        player2Score = 0;
+        isPlayer1Serving = true; // Player 1 starts serving
+        isPlayer1ServingRightSide = true; // Always start on the right side
+        isPlayer2ServingRightSide = true;
+        UpdateScoreUI();
+        StartCoroutine(SetupServe(true));
+    }
+
+    /// <summary>
+    /// Prepares the court for a new serve.
+    /// </summary>
+    private IEnumerator SetupServe(bool player1Serves)
+    {
+        // Wait 2 seconds before starting the next point
+        yield return new WaitForSeconds(2.0f);
+
+        // Clean up the old ball if it exists
+        if (currentBall != null)
         {
-            Debug.Log("Ball out of bounds!");
-            AwardPoint();
+            Destroy(currentBall);
         }
-        else if (bounceCount > 1)
+
+        // Determine serve position
+        Transform servePos;
+        if (player1Serves)
         {
-            // Ball bounced twice on one side
-            Debug.Log("Double bounce!");
-            AwardPoint();
+            servePos = isPlayer1ServingRightSide ? player1RightServePos : player1LeftServePos;
         }
-    }
-
-    // Handle serve faults
-    void HandleFault()
-    {
-        // Switch server or award point based on your rules
-        currentState = GameState.WaitingForServe;
-        ResetRally();
-    }
-
-    // Award point to appropriate player
-    void AwardPoint()
-    {
-        // Determine who gets the point based on last successful hit
-        if (hitHistory.Count > 0)
+        else
         {
-            BallHitData lastHit = hitHistory[hitHistory.Count - 1];
-            if (lastHit.playerNumber == 1)
-            {
-                player1Score++;
-                Debug.Log($"Point to Player 1! Score: {player1Score}-{player2Score}");
-            }
-            else
-            {
-                player2Score++;
-                Debug.Log($"Point to Player 2! Score: {player1Score}-{player2Score}");
-            }
+            servePos = isPlayer2ServingRightSide ? player2RightServePos : player2LeftServePos;
         }
 
-        currentState = GameState.PointScored;
-        Invoke("PrepareNextServe", 2f);
-    }
+        // Spawn a new ball
+        currentBall = Instantiate(ballPrefab, servePos.position, servePos.rotation);
 
-    // Prepare for next serve
-    void PrepareNextServe()
-    {
-        ResetRally();
-        currentState = GameState.WaitingForServe;
-    }
-
-    // Reset rally counters
-    void ResetRally()
-    {
+        // Reset point state
+        pointInProgress = true;
+        isServing = true; // This is now a serve
         bounceCount = 0;
-        hasBallBouncedOnServe = false;
-        hitHistory.Clear();
+        lastPaddleHit = null; // No one has hit the ball yet this point
     }
 
-    // Start a serve
-    public void StartServe(int player)
+    /// <summary>
+    /// Called by the BallController when it hits a paddle.
+    /// </summary>
+    public void BallHitPaddle(GameObject paddle)
     {
-        servingPlayer = player;
-        currentState = (player == 1) ? GameState.ServingPlayer1 : GameState.ServingPlayer2;
-        ResetRally();
-        Debug.Log($"Player {player} serving from {(isServerOnRightSide ? "right" : "left")} side");
+        if (!pointInProgress) return; // Don't register hits if point is over
+
+        lastPaddleHit = paddle;
+        isServing = false; // The ball has been hit (or returned), it's no longer a serve.
+        bounceCount = 0; // Reset bounce count on every paddle hit
     }
 
-    // Visualize court zones in editor
-    void OnDrawGizmos()
+    /// <summary>
+    /// Called by the BallController when it hits a ground zone (trigger).
+    /// </summary>
+    public void BallHitGround(Collider groundZone)
     {
-        // Draw court boundaries
-        Gizmos.color = Color.white;
-        DrawCourtRectangle(courtCenter, courtWidth, courtLength);
+        if (!pointInProgress) return; // Point is already over, ignore further bounces
 
-        // Draw kitchen (no-volley zone)
-        Gizmos.color = Color.yellow;
-        DrawCourtRectangle(courtCenter + Vector3.forward * (courtLength / 4 - kitchenDepth / 2),
-                          courtWidth, kitchenDepth);
-        DrawCourtRectangle(courtCenter + Vector3.back * (courtLength / 4 - kitchenDepth / 2),
-                          courtWidth, kitchenDepth);
+        // --- FAULT: Ball landed OUT of bounds ---
+        if (groundZone == outOfBoundsZone)
+        {
+            Debug.Log("FAULT: Out of Bounds!");
+            AwardPointToOpponent(lastPaddleHit);
+            return;
+        }
 
-        // Draw service boxes
-        Gizmos.color = Color.green;
-        float serviceBoxDepth = courtLength / 4 - kitchenDepth;
-        DrawCourtRectangle(courtCenter + Vector3.forward * (kitchenDepth + serviceBoxDepth / 2),
-                          courtWidth, serviceBoxDepth);
-        DrawCourtRectangle(courtCenter + Vector3.back * (kitchenDepth + serviceBoxDepth / 2),
-                          courtWidth, serviceBoxDepth);
+        // --- SERVE FAULT LOGIC ---
+        if (isServing)
+        {
+            // A serve *must* land in the correct diagonal box.
+            // It cannot land in the kitchen.
+            if (groundZone == player1Kitchen || groundZone == player2Kitchen)
+            {
+                Debug.Log("FAULT: Serve landed in the Kitchen!");
+                AwardPointToOpponent(null); // 'null' hitter means serve fault
+                return;
+            }
 
-        // Draw center line
-        Gizmos.color = Color.white;
-        Gizmos.DrawLine(courtCenter + Vector3.forward * courtLength / 2,
-                       courtCenter + Vector3.back * courtLength / 2);
+            // Check for correct service box
+            bool validServe = false;
+            if (isPlayer1Serving) // P1 is serving
+            {
+                // Serving from Right (P1) -> Must land in Right (P2)
+                if (isPlayer1ServingRightSide && groundZone == player2RightCourt) validServe = true;
+                // Serving from Left (P1) -> Must land in Left (P2)
+                if (!isPlayer1ServingRightSide && groundZone == player2LeftCourt) validServe = true;
+            }
+            else // P2 is serving
+            {
+                // Serving from Right (P2) -> Must land in Right (P1)
+                if (isPlayer2ServingRightSide && groundZone == player1RightCourt) validServe = true;
+                // Serving from Left (P2) -> Must land in Left (P1)
+                if (!isPlayer2ServingRightSide && groundZone == player1LeftCourt) validServe = true;
+            }
+
+            if (!validServe)
+            {
+                Debug.Log("FAULT: Serve landed in wrong box!");
+                AwardPointToOpponent(null); // 'null' hitter means serve fault
+                return;
+            }
+
+            // If we get here, the serve was valid.
+            isServing = false; // The next hit is a return, not a serve.
+        }
+
+        // --- RALLY LOGIC (after serve) ---
+        bounceCount++;
+
+        bool isP1Side = (groundZone == player1RightCourt || groundZone == player1LeftCourt || groundZone == player1Kitchen);
+        bool isP2Side = (groundZone == player2RightCourt || groundZone == player2LeftCourt || groundZone == player2Kitchen);
+
+        // --- POINT: Double Bounce ---
+        // If the ball bounces twice on the opponent's side, the hitter scores.
+        if (bounceCount >= 2)
+        {
+            Debug.Log("POINT: Double Bounce!");
+            AwardPointToHitter(lastPaddleHit);
+            return;
+        }
+
+        // --- FIRST BOUNCE LOGIC ---
+        if (bounceCount == 1)
+        {
+            // --- FAULT: Hitter hit the ball on their *own* side ---
+            if (lastPaddleHit == player1Paddle && isP1Side)
+            {
+                Debug.Log("FAULT: P1 hit their own side.");
+                AwardPointToOpponent(player1Paddle);
+            }
+            else if (lastPaddleHit == player2Paddle && isP2Side)
+            {
+                Debug.Log("FAULT: P2 hit their own side.");
+                AwardPointToOpponent(player2Paddle);
+            }
+            // --- ADD SERVE/KITCHEN RULES HERE ---
+            // This is where you would check for service faults (e.g., landing in kitchen)
+            // or kitchen volley faults (which requires knowing the *player's* position).
+        }
     }
 
-    void DrawCourtRectangle(Vector3 center, float width, float length)
+    /// <summary>
+    /// Awards a point to the player who *hit* the ball.
+    /// </summary>
+    private void AwardPointToHitter(GameObject hitter)
     {
-        Vector3 topLeft = center + new Vector3(-width / 2, 0, length / 2);
-        Vector3 topRight = center + new Vector3(width / 2, 0, length / 2);
-        Vector3 bottomLeft = center + new Vector3(-width / 2, 0, -length / 2);
-        Vector3 bottomRight = center + new Vector3(width / 2, 0, -length / 2);
+        pointInProgress = false; // Point is over
 
-        Gizmos.DrawLine(topLeft, topRight);
-        Gizmos.DrawLine(topRight, bottomRight);
-        Gizmos.DrawLine(bottomRight, bottomLeft);
-        Gizmos.DrawLine(bottomLeft, topLeft);
+        if (hitter == player1Paddle)
+        {
+            player1Score++;
+            isPlayer1Serving = true; // Hitter keeps the serve
+            isPlayer1ServingRightSide = !isPlayer1ServingRightSide; // Switch serve side
+            Debug.Log("Point for Player 1!");
+        }
+        else // Must be player 2 (or null, but AI will be P2)
+        {
+            player2Score++;
+            isPlayer1Serving = false; // Hitter keeps the serve
+            isPlayer2ServingRightSide = !isPlayer2ServingRightSide; // Switch serve side
+            Debug.Log("Point for Player 2!");
+        }
+
+        UpdateScoreUI();
+        StartCoroutine(SetupServe(isPlayer1Serving)); // Start next serve
+    }
+
+    /// <summary>
+    /// Awards a point to the *opponent* of the hitter (who committed the fault).
+    /// </summary>
+    private void AwardPointToOpponent(GameObject hitter)
+    {
+        pointInProgress = false; // Point is over
+
+        if (isPlayer1Serving) // P1 was serving (or P1 was last to hit)
+        {
+            player2Score++;
+            isPlayer1Serving = false; // Serve goes to P2
+            isPlayer2ServingRightSide = !isPlayer2ServingRightSide; // P2 switches side for their first serve
+            Debug.Log("Point for Player 2!");
+        }
+        else // P2 was serving (or P2 was last to hit)
+        {
+            player1Score++;
+            isPlayer1Serving = true; // Serve goes to P1
+            isPlayer1ServingRightSide = !isPlayer1ServingRightSide; // P1 switches side for their first serve
+            Debug.Log("Point for Player 1!");
+        }
+
+        UpdateScoreUI();
+        StartCoroutine(SetupServe(isPlayer1Serving)); // Start next serve
+    }
+
+    /// <summary>
+    /// Updates the score text on the UI.
+    /// </summary>
+    private void UpdateScoreUI()
+    {
+        if (player1ScoreText != null)
+        {
+            player1ScoreText.text = $"P1: {player1Score}";
+        }
+        if (player2ScoreText != null)
+        {
+            player2ScoreText.text = $"P2: {player2Score}";
+        }
     }
 }
