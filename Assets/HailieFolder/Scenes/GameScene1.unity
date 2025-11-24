@@ -4797,7 +4797,7 @@ MonoBehaviour:
   ballDrag: 0.5
   player1Paddle: {fileID: 2103687222}
   player2Paddle: {fileID: 101231594}
-  aiOpponent: {fileID: 0}
+  aiOpponent: {fileID: 301981554}
   ballPrefab: {fileID: 605516736}
   player1RightServePos: {fileID: 1719601315}
   player1LeftServePos: {fileID: 2098060272}
