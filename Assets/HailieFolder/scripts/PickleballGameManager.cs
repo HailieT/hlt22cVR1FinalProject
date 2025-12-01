@@ -1,6 +1,6 @@
 using UnityEngine;
 using System.Collections;
-using UnityEngine.UI; // Uses standard Unity UI to prevent errors
+using TMPro; // Changed from UnityEngine.UI
 
 public class PickleballGameManager : MonoBehaviour
 {
@@ -34,9 +34,9 @@ public class PickleballGameManager : MonoBehaviour
     public Collider outOfBoundsZone;
 
     [Header("Scoring UI")]
-    // Using standard Text objects
-    public Text player1ScoreText;
-    public Text player2ScoreText;
+    // Using TextMeshProUGUI for Unity 6
+    public TextMeshProUGUI player1ScoreText;
+    public TextMeshProUGUI player2ScoreText;
 
     // Private Variables
     private int player1Score;

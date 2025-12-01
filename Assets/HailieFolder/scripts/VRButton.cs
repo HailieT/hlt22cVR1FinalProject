@@ -12,6 +12,9 @@ public class VRButton : MonoBehaviour
     public float pressDistance = 0.02f; // How far it moves down
     public Material pressedMaterial; // Optional: color change when pressed
 
+    [Header("Debug")]
+    public bool debugMode = false; // Enable to see collision messages
+
     private Vector3 startPos;
     private bool isPressed = false;
     private Material originalMaterial;
@@ -24,14 +27,29 @@ public class VRButton : MonoBehaviour
 
         btnRenderer = buttonTop.GetComponent<Renderer>();
         if (btnRenderer != null) originalMaterial = btnRenderer.material;
+
+        // Verify setup
+        Collider col = GetComponent<Collider>();
+        if (col == null)
+        {
+            Debug.LogError($"VRButton '{gameObject.name}' needs a Collider component!");
+        }
+        else if (!col.isTrigger)
+        {
+            Debug.LogWarning($"VRButton '{gameObject.name}' collider should be set to 'Is Trigger'!");
+        }
     }
 
     private void OnTriggerEnter(Collider other)
     {
+        if (debugMode)
+        {
+            Debug.Log($"Button '{gameObject.name}' touched by: {other.gameObject.name} (Tag: {other.tag})");
+        }
+
         if (isPressed) return;
 
         // Check if the object touching the button is the hand
-        // (Or if you don't want to use tags, remove this if check to let ANYTHING press it)
         if (other.CompareTag(handTag) || other.gameObject.name.ToLower().Contains("hand"))
         {
             PressButton();
@@ -41,6 +59,12 @@ public class VRButton : MonoBehaviour
     private void PressButton()
     {
         isPressed = true;
+
+        if (debugMode)
+        {
+            Debug.Log($"Button '{gameObject.name}' PRESSED!");
+        }
+
         onPressed.Invoke(); // Run the function assigned in Unity
 
         // Visual feedback: Move button down
