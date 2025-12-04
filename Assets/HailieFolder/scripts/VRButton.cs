@@ -5,7 +5,10 @@ public class VRButton : MonoBehaviour
 {
     [Header("Settings")]
     public UnityEvent onPressed; // Drag the function you want to run here in Inspector
-    public string handTag = "PlayerHand"; // Make sure your VR hands have this tag!
+
+    // CHANGED: Replaced string tag with LayerMask for faster, more reliable detection
+    [Tooltip("Set this to the Layer your VR Hands are on (e.g., 'XR Hands')")]
+    public LayerMask activatorLayer;
 
     [Header("Visuals")]
     public Transform buttonTop; // The moving part of the button
@@ -42,17 +45,18 @@ public class VRButton : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (debugMode)
+        // CHANGED: Use bitwise operation to check if the object's layer is in our mask
+        if (((1 << other.gameObject.layer) & activatorLayer) != 0)
         {
-            Debug.Log($"Button '{gameObject.name}' touched by: {other.gameObject.name} (Tag: {other.tag})");
-        }
+            if (debugMode)
+            {
+                Debug.Log($"Button '{gameObject.name}' touched by hand: {other.gameObject.name}");
+            }
 
-        if (isPressed) return;
-
-        // Check if the object touching the button is the hand
-        if (other.CompareTag(handTag) || other.gameObject.name.ToLower().Contains("hand"))
-        {
-            PressButton();
+            if (!isPressed)
+            {
+                PressButton();
+            }
         }
     }
 
@@ -81,7 +85,12 @@ public class VRButton : MonoBehaviour
     private void ResetButton()
     {
         isPressed = false;
+
+        // Visual feedback: Return to start
         buttonTop.localPosition = startPos;
-        if (btnRenderer != null) btnRenderer.material = originalMaterial;
+
+        // Visual feedback: Return to original color
+        if (originalMaterial != null && btnRenderer != null)
+            btnRenderer.material = originalMaterial;
     }
 }

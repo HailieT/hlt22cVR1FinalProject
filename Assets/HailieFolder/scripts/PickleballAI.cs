@@ -1,5 +1,6 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))] // Ensures the AI always has a Rigidbody
 public class PickleballAI : MonoBehaviour
 {
     [Header("References")]
@@ -18,6 +19,15 @@ public class PickleballAI : MonoBehaviour
 
     private GameObject currentBall;
     private Rigidbody currentBallRb;
+    private Rigidbody rb; // Reference to our own Rigidbody
+
+    private void Start()
+    {
+        rb = GetComponent<Rigidbody>();
+        // Ensure the paddle doesn't fall over or get pushed by the ball
+        rb.isKinematic = true;
+        rb.useGravity = false;
+    }
 
     // Called by GameManager when a new ball is spawned
     public void AssignBall(GameObject newBall)
@@ -29,17 +39,20 @@ public class PickleballAI : MonoBehaviour
         }
     }
 
-    private void Update()
+    // CHANGED: Update -> FixedUpdate for smooth physics interactions
+    private void FixedUpdate()
     {
         if (currentBall == null)
         {
-            ReturnToIdle();
+            ReturnToIdle(); // Fixed the typo here
             return;
         }
 
         // Calculate distance to ball
-        float distanceToBall = Vector3.Distance(transform.position, currentBall.transform.position);
-        bool ballIsComing = currentBallRb.linearVelocity.z > 0; // Assuming AI is on Positive Z side facing Negative Z
+        float distanceToBall = Vector3.Distance(rb.position, currentBall.transform.position);
+
+        // Check if ball is moving towards Positive Z (assuming AI is at +Z end of court)
+        bool ballIsComing = currentBallRb.linearVelocity.z > 0;
 
         // If ball is close enough and coming towards us, move to intercept
         if (distanceToBall < reactionDistance && ballIsComing)
@@ -55,27 +68,32 @@ public class PickleballAI : MonoBehaviour
     private void MoveTowardsBall()
     {
         // We only want to match the Ball's X position, but keep our own Z (depth) position roughly
-        // We allow slight Z movement to step forward into the shot
         Vector3 targetPos = new Vector3(currentBall.transform.position.x, transform.position.y, transform.position.z);
 
         // Clamp X so AI doesn't run off court
         targetPos.x = Mathf.Clamp(targetPos.x, -xBoundary, xBoundary);
 
-        // Move smoothly
-        transform.position = Vector3.MoveTowards(transform.position, targetPos, moveSpeed * Time.deltaTime);
+        // CHANGED: Use MovePosition with fixedDeltaTime
+        // This gives the paddle 'velocity' so it hits the ball solidly instead of ghosting through it
+        Vector3 newPosition = Vector3.MoveTowards(rb.position, targetPos, moveSpeed * Time.fixedDeltaTime);
+        rb.MovePosition(newPosition);
 
-        // Rotate paddle slightly to face the ball (optional aesthetic)
+        // Face the ball
         transform.LookAt(currentBall.transform);
     }
 
+    // --- THIS WAS MISSING IN YOUR PREVIOUS COPY ---
     private void ReturnToIdle()
     {
         if (defaultPosition != null)
         {
-            transform.position = Vector3.MoveTowards(transform.position, defaultPosition.position, moveSpeed * Time.deltaTime);
+            // Move smoothly back to start
+            Vector3 newPosition = Vector3.MoveTowards(rb.position, defaultPosition.position, moveSpeed * Time.fixedDeltaTime);
+            rb.MovePosition(newPosition);
 
             // Reset rotation smoothly
-            transform.rotation = Quaternion.Slerp(transform.rotation, defaultPosition.rotation, Time.deltaTime * 2f);
+            Quaternion newRotation = Quaternion.Slerp(transform.rotation, defaultPosition.rotation, Time.fixedDeltaTime * 2f);
+            rb.MoveRotation(newRotation);
         }
     }
 
@@ -96,7 +114,6 @@ public class PickleballAI : MonoBehaviour
         Vector3 targetDir = (opponentCourtTarget.position - transform.position).normalized;
 
         // 2. Add Randomness (Error Rate)
-        // We perturb the target X slightly so the AI doesn't hit the exact same spot every time
         float randomOffset = Random.Range(-2f, 2f) * errorRate;
         targetDir.x += randomOffset;
 
@@ -104,11 +121,9 @@ public class PickleballAI : MonoBehaviour
         targetDir.y += upwardArc;
 
         // 4. Apply Velocity
-        // We reset velocity first to cancel out current momentum, then apply the hit
         currentBallRb.linearVelocity = Vector3.zero;
         currentBallRb.linearVelocity = targetDir.normalized * hitForce;
 
-        // Audio feedback could go here
         Debug.Log("AI Returned the ball!");
     }
 }
