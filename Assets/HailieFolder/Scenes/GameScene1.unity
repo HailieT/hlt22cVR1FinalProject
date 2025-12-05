@@ -1498,7 +1498,9 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
-  handTag: PlayerHand
+  activatorLayer:
+    serializedVersion: 2
+    m_Bits: 0
   buttonTop: {fileID: 0}
   pressDistance: 0.02
   pressedMaterial: {fileID: 0}
@@ -1930,7 +1932,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1110151684}
-  - {fileID: 1780761984}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3784,7 +3785,7 @@ Transform:
   m_GameObject: {fileID: 1110151683}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -992.29, y: -710.39, z: 189.3}
+  m_LocalPosition: {x: -241.16, y: -301.853, z: 189.718}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -3796,6 +3797,7 @@ Transform:
   - {fileID: 448984170}
   - {fileID: 1843458331}
   - {fileID: 1391335936}
+  - {fileID: 1780761984}
   m_Father: {fileID: 585731331}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1115763948
@@ -4389,7 +4391,9 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
-  handTag: PlayerHand
+  activatorLayer:
+    serializedVersion: 2
+    m_Bits: 0
   buttonTop: {fileID: 0}
   pressDistance: 0.02
   pressedMaterial: {fileID: 0}
@@ -5686,15 +5690,15 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1780761983}
   m_LocalRotation: {x: 0.0000011026857, y: 0.70710576, z: -0.0000009536743, w: 0.70710784}
-  m_LocalPosition: {x: 0, y: 0, z: 190.69766}
+  m_LocalPosition: {x: 0, y: 0, z: 1.3976593}
   m_LocalScale: {x: 0.018000005, y: 0.018000005, z: 0.018000001}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 585731331}
+  m_Father: {fileID: 1110151684}
   m_LocalEulerAnglesHint: {x: 0, y: 90, z: -90}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -4.6049805, y: -393.14142}
+  m_AnchoredPosition: {x: 987.68506, y: 317.24866}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1780761985
@@ -5864,7 +5868,9 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
-  handTag: PlayerHand
+  activatorLayer:
+    serializedVersion: 2
+    m_Bits: 0
   buttonTop: {fileID: 0}
   pressDistance: 0.02
   pressedMaterial: {fileID: 0}
