@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using System.Collections;
 
@@ -7,46 +6,44 @@ public class PickleballAI : MonoBehaviour
     [Header("AI Settings")]
     public float movementSpeed = 3.5f;
     public float serveDelay = 1.0f;
-
-    // We no longer need "Serve Power" because Math calculates the exact power needed.
-    [Header("Trajectory Settings")]
-    public float arcHeight = 1.8f; // Peak height of the ball (Higher than net which is ~0.9m)
+    public float arcHeight = 1.8f;
 
     [Header("Serve Targets")]
     public Transform leftCourtTarget;
     public Transform rightCourtTarget;
 
     private GameObject currentBall;
-    private PickleballGameManager gameManager;
     private Rigidbody rb;
     private bool isServingRoutineRunning = false;
 
     private void Start()
     {
-        gameManager = PickleballGameManager.Instance;
         rb = GetComponent<Rigidbody>();
 
+        // --- FORCE PHYSICS SETTINGS (Fixes Disappearing) ---
         if (rb != null)
         {
-            rb.isKinematic = true;
-            rb.useGravity = false;
+            rb.isKinematic = true; // MUST BE TRUE
+            rb.useGravity = false; // MUST BE FALSE
+
+            // Freezing rotation prevents it from getting knocked over if physics glitch happens
+            rb.constraints = RigidbodyConstraints.FreezeRotation;
         }
     }
 
     private void FixedUpdate()
     {
-        if (currentBall == null || gameManager == null) return;
+        // 1. Safety Check: If ball is missing, do nothing
+        if (currentBall == null) return;
 
-        bool isMyServe = IsMyServe();
+        // 2. Safety Check: Check for NaN (Not a Number) to prevent vanishing
+        if (float.IsNaN(currentBall.transform.position.x)) return;
 
-        if (isMyServe)
+        if (IsMyServe())
         {
-            if (!isServingRoutineRunning)
-            {
-                StartCoroutine(PerformServe());
-            }
+            if (!isServingRoutineRunning) StartCoroutine(PerformServe());
 
-            // Hover behind ball
+            // Stand 0.5m behind the ball
             Vector3 hoverPos = currentBall.transform.position;
             hoverPos.z += 0.5f;
             MovePaddle(hoverPos);
@@ -55,6 +52,20 @@ public class PickleballAI : MonoBehaviour
         {
             MovePaddle(currentBall.transform.position);
         }
+    }
+
+    private void MovePaddle(Vector3 targetPos)
+    {
+        // --- MOVEMENT CLAMP (Fixes Flying Off) ---
+        // We calculate the next position, but we clamp it strictly to the court area.
+        Vector3 newPos = Vector3.MoveTowards(transform.position, targetPos, movementSpeed * Time.fixedDeltaTime);
+
+        newPos.y = Mathf.Clamp(newPos.y, 0.5f, 2.5f);  // Never go below floor or too high
+        newPos.z = Mathf.Clamp(newPos.z, 0.5f, 15.0f); // Never go behind net or too far back
+        newPos.x = Mathf.Clamp(newPos.x, -10f, 10f);   // Stay within side boundaries
+
+        if (rb != null) rb.MovePosition(newPos);
+        else transform.position = newPos;
     }
 
     public void AssignBall(GameObject ball)
@@ -66,6 +77,7 @@ public class PickleballAI : MonoBehaviour
     private bool IsMyServe()
     {
         if (currentBall == null) return false;
+        // Check if ball is floating (Kinematic) and on AI side (Z > 0)
         return currentBall.transform.position.z > 0 && currentBall.GetComponent<Rigidbody>().isKinematic;
     }
 
@@ -76,47 +88,34 @@ public class PickleballAI : MonoBehaviour
 
         if (currentBall != null)
         {
-            // 1. Pick a Target
-            Transform targetTransform = (Random.value > 0.5f) ? leftCourtTarget : rightCourtTarget;
-            Vector3 targetPosition = targetTransform.position;
+            Transform target = (Random.value > 0.5f) ? leftCourtTarget : rightCourtTarget;
+            // Fallback if target is not assigned
+            Vector3 targetPos = (target != null) ? target.position : new Vector3(0, 0, -5);
 
-            // 2. CALCULATE PHYSICS ARC
-            // We use the ball's current position and the target position.
-            // "arcHeight" ensures it clears the net.
-            Vector3 calculatedVelocity = CalculateParabola(currentBall.transform.position, targetPosition, arcHeight);
+            Vector3 calculatedVelocity = CalculateParabola(currentBall.transform.position, targetPos, arcHeight);
 
-            // 3. Launch
-            BallController bCtrl = currentBall.GetComponent<BallController>();
-            if (bCtrl != null)
+            // Double check for Math errors (NaN) before applying
+            if (!float.IsNaN(calculatedVelocity.x))
             {
-                // Note: We use VelocityChange to set exact speed, ignoring mass
-                bCtrl.LaunchBall(Vector3.zero); // Unfreeze first
-
-                // We apply the velocity directly to the Rigidbody for precision
-                currentBall.GetComponent<Rigidbody>().linearVelocity = calculatedVelocity;
+                BallController bCtrl = currentBall.GetComponent<BallController>();
+                if (bCtrl != null)
+                {
+                    bCtrl.LaunchBall(Vector3.zero); // Unlock physics
+                    currentBall.GetComponent<Rigidbody>().linearVelocity = calculatedVelocity; // Apply precise arc
+                }
             }
         }
-
         isServingRoutineRunning = false;
     }
 
-    private void MovePaddle(Vector3 targetPos)
-    {
-        Vector3 newPos = Vector3.MoveTowards(transform.position, targetPos, movementSpeed * Time.fixedDeltaTime);
-        newPos.y = Mathf.Clamp(newPos.y, 0.5f, 2.0f);
-        newPos.z = Mathf.Clamp(newPos.z, 0.5f, 15f);
-        rb.MovePosition(newPos);
-    }
-
-    // --- THE MATH MAGIC ---
-    // This calculates the exact velocity needed to throw Object A to Position B with a specific height curve.
     private Vector3 CalculateParabola(Vector3 start, Vector3 end, float height)
     {
         float gravity = Physics.gravity.y;
         float displacementY = end.y - start.y;
         Vector3 displacementXZ = new Vector3(end.x - start.x, 0, end.z - start.z);
 
-        // Math formula for projectile motion
+        if (gravity == 0) return Vector3.zero; // Safety check
+
         Vector3 velocityY = Vector3.up * Mathf.Sqrt(-2 * gravity * height);
         Vector3 velocityXZ = displacementXZ / (Mathf.Sqrt(-2 * height / gravity) + Mathf.Sqrt(2 * (displacementY - height) / gravity));
 

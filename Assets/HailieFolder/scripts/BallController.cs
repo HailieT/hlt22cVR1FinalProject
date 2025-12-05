@@ -1,146 +1,78 @@
 using UnityEngine;
 
-// --- BallController.cs ---
-// Attach this script to your Pickleball PREFAB.
-// Requires Rigidbody and SphereCollider.
-// Handles floating states, VR physics optimization, and collision reporting.
-
 [RequireComponent(typeof(Rigidbody))]
-[RequireComponent(typeof(SphereCollider))]
 public class BallController : MonoBehaviour
 {
     private PickleballGameManager gameManager;
     private Rigidbody rb;
 
-    [Header("Physics Settings")]
-    [Tooltip("Standard Pickleball mass is approx 0.026 kg")]
-    public float ballMass = 0.026f;
-
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
-
-        // --- VR PHYSICS SETUP ---
-        // 1. Interpolate makes the ball look smooth at high VR refresh rates (90/120Hz).
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-
-        // 2. ContinuousDynamic is CRITICAL for VR. 
-        // It prevents the ball from phasing through the paddle when swung fast.
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-
-        // 3. Set standard mass
-        rb.mass = ballMass;
     }
 
     private void Start()
     {
-        // Find the GameManager automatically
         gameManager = PickleballGameManager.Instance;
-
-        if (gameManager == null)
-        {
-            Debug.LogError("BallController: Could not find PickleballGameManager!");
-        }
-
-        // Start in "Floating" mode (wait for start button/AI serve)
-        SetFloating(true);
     }
 
-    // ------------------------------------------------------------------------
-    // PUBLIC METHODS (Call these from GameManager or AI Opponent)
-    // ------------------------------------------------------------------------
-
-    /// <summary>
-    /// Resets the ball to a specific position (e.g., AI's hand) and makes it float.
-    /// Call this when the "Start Button" is pressed.
-    /// </summary>
     public void ResetToPosition(Vector3 startPosition)
     {
         transform.position = startPosition;
-
-        // Kill all momentum
         rb.linearVelocity = Vector3.zero;
-        rb.angularVelocity = Vector3.zero;
-
-        // Make it float again
-        SetFloating(true);
+        rb.useGravity = false;
+        rb.isKinematic = true;
     }
 
-    /// <summary>
-    /// Call this when the AI "hits" the ball to serve.
-    /// This enables physics and applies the strike force.
-    /// </summary>
-    /// <param name="forceVector">Direction and power of the hit</param>
     public void LaunchBall(Vector3 forceVector)
     {
-        // Turn on physics
-        SetFloating(false);
-
-        // Apply the hit
-        rb.AddForce(forceVector, ForceMode.Impulse);
+        rb.useGravity = true;
+        rb.isKinematic = false;
+        if (forceVector != Vector3.zero) rb.AddForce(forceVector, ForceMode.Impulse);
     }
-
-    // ------------------------------------------------------------------------
-    // INTERNAL LOGIC
-    // ------------------------------------------------------------------------
-
-    private void SetFloating(bool isFloating)
-    {
-        if (isFloating)
-        {
-            rb.useGravity = false;
-            rb.isKinematic = true; // Locks ball in place, immune to physics
-        }
-        else
-        {
-            rb.useGravity = true;
-            rb.isKinematic = false; // Unlocks ball, gravity and forces apply
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // COLLISION LOGIC (Original)
-    // ------------------------------------------------------------------------
 
     private void OnCollisionEnter(Collision collision)
     {
         if (gameManager == null) return;
 
-        // If the ball is floating (kinematic) and gets hit by a moving physics object, 
-        // we might want to activate it. 
-        // NOTE: Usually, paddles in VR are kinematic too. If using physics paddles:
-        if (rb.isKinematic)
-        {
-            // Optional: Activate ball if player touches it while it's floating
-            // SetFloating(false); 
-        }
+        GameObject hitObj = collision.gameObject;
 
-        GameObject hitObject = collision.gameObject;
+        // --- DEBUGGER ---
+        // Look at your Console! It will tell you exactly what you hit.
+        Debug.Log("Ball Hit: " + hitObj.name);
 
-        if (hitObject == gameManager.player1Paddle)
+        // 1. Check Paddles
+        if (hitObj == gameManager.player1Paddle)
         {
             gameManager.BallHitPaddle(gameManager.player1Paddle);
+            return;
         }
-        else if (hitObject == gameManager.player2Paddle)
+        if (hitObj == gameManager.player2Paddle)
         {
             gameManager.BallHitPaddle(gameManager.player2Paddle);
+            return;
         }
+
+        // 2. Check Court Zones
+        // IMPORTANT: We check if the hit object IS the zone, OR is a CHILD of the zone
+        if (IsZone(hitObj, gameManager.player1RightCourt)) gameManager.BallHitGround(gameManager.player1RightCourt);
+        else if (IsZone(hitObj, gameManager.player1LeftCourt)) gameManager.BallHitGround(gameManager.player1LeftCourt);
+        else if (IsZone(hitObj, gameManager.player1Kitchen)) gameManager.BallHitGround(gameManager.player1Kitchen);
+        else if (IsZone(hitObj, gameManager.player2RightCourt)) gameManager.BallHitGround(gameManager.player2RightCourt);
+        else if (IsZone(hitObj, gameManager.player2LeftCourt)) gameManager.BallHitGround(gameManager.player2LeftCourt);
+        else if (IsZone(hitObj, gameManager.player2Kitchen)) gameManager.BallHitGround(gameManager.player2Kitchen);
+        else if (IsZone(hitObj, gameManager.outOfBoundsZone)) gameManager.BallHitGround(gameManager.outOfBoundsZone);
     }
 
-    private void OnTriggerEnter(Collider other)
+    // Helper to check if the object we hit is the zone OR part of the zone
+    private bool IsZone(GameObject hitObj, Collider zoneCollider)
     {
-        if (gameManager == null) return;
-
-        // Check court zones
-        if (other == gameManager.player1RightCourt ||
-            other == gameManager.player1LeftCourt ||
-            other == gameManager.player1Kitchen ||
-            other == gameManager.player2RightCourt ||
-            other == gameManager.player2LeftCourt ||
-            other == gameManager.player2Kitchen ||
-            other == gameManager.outOfBoundsZone)
-        {
-            gameManager.BallHitGround(other);
-        }
+        if (zoneCollider == null) return false;
+        // Check if we hit the collider directly
+        if (hitObj == zoneCollider.gameObject) return true;
+        // Check if the hit object is a child of the zone transform
+        if (hitObj.transform.IsChildOf(zoneCollider.transform)) return true;
+        return false;
     }
 }
