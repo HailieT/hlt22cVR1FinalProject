@@ -1,129 +1,125 @@
-using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody))] // Ensures the AI always has a Rigidbody
+using UnityEngine;
+using System.Collections;
+
 public class PickleballAI : MonoBehaviour
 {
-    [Header("References")]
-    public Transform defaultPosition; // Where the AI returns to when not hitting
-    public Transform opponentCourtTarget; // An empty GameObject in the center of the PLAYER'S court
+    [Header("AI Settings")]
+    public float movementSpeed = 3.5f;
+    public float serveDelay = 1.0f;
 
-    [Header("Movement Settings")]
-    public float moveSpeed = 3.5f; // How fast the AI moves
-    public float xBoundary = 2.5f; // How far left/right the AI can go
-    public float reactionDistance = 8.0f; // How close ball must be before AI moves
+    // We no longer need "Serve Power" because Math calculates the exact power needed.
+    [Header("Trajectory Settings")]
+    public float arcHeight = 1.8f; // Peak height of the ball (Higher than net which is ~0.9m)
 
-    [Header("Hitting Settings")]
-    public float hitForce = 8f; // Power of the return
-    public float upwardArc = 0.3f; // How much arc to add to the hit (0.0 to 1.0)
-    [Range(0, 1)] public float errorRate = 0.1f; // 0 = Perfect, 1 = Very clumsy
+    [Header("Serve Targets")]
+    public Transform leftCourtTarget;
+    public Transform rightCourtTarget;
 
     private GameObject currentBall;
-    private Rigidbody currentBallRb;
-    private Rigidbody rb; // Reference to our own Rigidbody
+    private PickleballGameManager gameManager;
+    private Rigidbody rb;
+    private bool isServingRoutineRunning = false;
 
     private void Start()
     {
+        gameManager = PickleballGameManager.Instance;
         rb = GetComponent<Rigidbody>();
-        // Ensure the paddle doesn't fall over or get pushed by the ball
-        rb.isKinematic = true;
-        rb.useGravity = false;
-    }
 
-    // Called by GameManager when a new ball is spawned
-    public void AssignBall(GameObject newBall)
-    {
-        currentBall = newBall;
-        if (currentBall != null)
+        if (rb != null)
         {
-            currentBallRb = currentBall.GetComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
         }
     }
 
-    // CHANGED: Update -> FixedUpdate for smooth physics interactions
     private void FixedUpdate()
     {
-        if (currentBall == null)
+        if (currentBall == null || gameManager == null) return;
+
+        bool isMyServe = IsMyServe();
+
+        if (isMyServe)
         {
-            ReturnToIdle(); // Fixed the typo here
-            return;
-        }
+            if (!isServingRoutineRunning)
+            {
+                StartCoroutine(PerformServe());
+            }
 
-        // Calculate distance to ball
-        float distanceToBall = Vector3.Distance(rb.position, currentBall.transform.position);
-
-        // Check if ball is moving towards Positive Z (assuming AI is at +Z end of court)
-        bool ballIsComing = currentBallRb.linearVelocity.z > 0;
-
-        // If ball is close enough and coming towards us, move to intercept
-        if (distanceToBall < reactionDistance && ballIsComing)
-        {
-            MoveTowardsBall();
+            // Hover behind ball
+            Vector3 hoverPos = currentBall.transform.position;
+            hoverPos.z += 0.5f;
+            MovePaddle(hoverPos);
         }
         else
         {
-            ReturnToIdle();
+            MovePaddle(currentBall.transform.position);
         }
     }
 
-    private void MoveTowardsBall()
+    public void AssignBall(GameObject ball)
     {
-        // We only want to match the Ball's X position, but keep our own Z (depth) position roughly
-        Vector3 targetPos = new Vector3(currentBall.transform.position.x, transform.position.y, transform.position.z);
-
-        // Clamp X so AI doesn't run off court
-        targetPos.x = Mathf.Clamp(targetPos.x, -xBoundary, xBoundary);
-
-        // CHANGED: Use MovePosition with fixedDeltaTime
-        // This gives the paddle 'velocity' so it hits the ball solidly instead of ghosting through it
-        Vector3 newPosition = Vector3.MoveTowards(rb.position, targetPos, moveSpeed * Time.fixedDeltaTime);
-        rb.MovePosition(newPosition);
-
-        // Face the ball
-        transform.LookAt(currentBall.transform);
+        currentBall = ball;
+        isServingRoutineRunning = false;
     }
 
-    // --- THIS WAS MISSING IN YOUR PREVIOUS COPY ---
-    private void ReturnToIdle()
+    private bool IsMyServe()
     {
-        if (defaultPosition != null)
+        if (currentBall == null) return false;
+        return currentBall.transform.position.z > 0 && currentBall.GetComponent<Rigidbody>().isKinematic;
+    }
+
+    private IEnumerator PerformServe()
+    {
+        isServingRoutineRunning = true;
+        yield return new WaitForSeconds(serveDelay);
+
+        if (currentBall != null)
         {
-            // Move smoothly back to start
-            Vector3 newPosition = Vector3.MoveTowards(rb.position, defaultPosition.position, moveSpeed * Time.fixedDeltaTime);
-            rb.MovePosition(newPosition);
+            // 1. Pick a Target
+            Transform targetTransform = (Random.value > 0.5f) ? leftCourtTarget : rightCourtTarget;
+            Vector3 targetPosition = targetTransform.position;
 
-            // Reset rotation smoothly
-            Quaternion newRotation = Quaternion.Slerp(transform.rotation, defaultPosition.rotation, Time.fixedDeltaTime * 2f);
-            rb.MoveRotation(newRotation);
+            // 2. CALCULATE PHYSICS ARC
+            // We use the ball's current position and the target position.
+            // "arcHeight" ensures it clears the net.
+            Vector3 calculatedVelocity = CalculateParabola(currentBall.transform.position, targetPosition, arcHeight);
+
+            // 3. Launch
+            BallController bCtrl = currentBall.GetComponent<BallController>();
+            if (bCtrl != null)
+            {
+                // Note: We use VelocityChange to set exact speed, ignoring mass
+                bCtrl.LaunchBall(Vector3.zero); // Unfreeze first
+
+                // We apply the velocity directly to the Rigidbody for precision
+                currentBall.GetComponent<Rigidbody>().linearVelocity = calculatedVelocity;
+            }
         }
+
+        isServingRoutineRunning = false;
     }
 
-    // Triggers when the ball physically touches the AI paddle
-    private void OnCollisionEnter(Collision collision)
+    private void MovePaddle(Vector3 targetPos)
     {
-        if (collision.gameObject == currentBall)
-        {
-            HitBallBack();
-        }
+        Vector3 newPos = Vector3.MoveTowards(transform.position, targetPos, movementSpeed * Time.fixedDeltaTime);
+        newPos.y = Mathf.Clamp(newPos.y, 0.5f, 2.0f);
+        newPos.z = Mathf.Clamp(newPos.z, 0.5f, 15f);
+        rb.MovePosition(newPos);
     }
 
-    private void HitBallBack()
+    // --- THE MATH MAGIC ---
+    // This calculates the exact velocity needed to throw Object A to Position B with a specific height curve.
+    private Vector3 CalculateParabola(Vector3 start, Vector3 end, float height)
     {
-        if (currentBallRb == null || opponentCourtTarget == null) return;
+        float gravity = Physics.gravity.y;
+        float displacementY = end.y - start.y;
+        Vector3 displacementXZ = new Vector3(end.x - start.x, 0, end.z - start.z);
 
-        // 1. Calculate direction towards the player's court center
-        Vector3 targetDir = (opponentCourtTarget.position - transform.position).normalized;
+        // Math formula for projectile motion
+        Vector3 velocityY = Vector3.up * Mathf.Sqrt(-2 * gravity * height);
+        Vector3 velocityXZ = displacementXZ / (Mathf.Sqrt(-2 * height / gravity) + Mathf.Sqrt(2 * (displacementY - height) / gravity));
 
-        // 2. Add Randomness (Error Rate)
-        float randomOffset = Random.Range(-2f, 2f) * errorRate;
-        targetDir.x += randomOffset;
-
-        // 3. Add Upward Arc (to clear the net)
-        targetDir.y += upwardArc;
-
-        // 4. Apply Velocity
-        currentBallRb.linearVelocity = Vector3.zero;
-        currentBallRb.linearVelocity = targetDir.normalized * hitForce;
-
-        Debug.Log("AI Returned the ball!");
+        return velocityXZ + velocityY;
     }
 }

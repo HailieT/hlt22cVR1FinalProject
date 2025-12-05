@@ -1,13 +1,12 @@
 using UnityEngine;
 using System.Collections;
-using TMPro; // Changed from UnityEngine.UI
+using TMPro;
 
 public class PickleballGameManager : MonoBehaviour
 {
     public static PickleballGameManager Instance { get; private set; }
 
     [Header("Game Settings")]
-    // Public so the Menu can access it
     public float ballDrag = 0.5f;
 
     [Header("Player & Paddle Setup")]
@@ -19,10 +18,11 @@ public class PickleballGameManager : MonoBehaviour
 
     [Header("Ball & Spawn Setup")]
     public GameObject ballPrefab;
+    // These transforms should be placed where the ball "floats" before serving
     public Transform player1RightServePos;
     public Transform player1LeftServePos;
-    public Transform player2RightServePos;
-    public Transform player2LeftServePos;
+    public Transform player2RightServePos; // AI Right Hand Position
+    public Transform player2LeftServePos;  // AI Left Hand Position
 
     [Header("Court Zone Colliders")]
     public Collider player1RightCourt;
@@ -34,7 +34,6 @@ public class PickleballGameManager : MonoBehaviour
     public Collider outOfBoundsZone;
 
     [Header("Scoring UI")]
-    // Using TextMeshProUGUI for Unity 6
     public TextMeshProUGUI player1ScoreText;
     public TextMeshProUGUI player2ScoreText;
 
@@ -64,12 +63,11 @@ public class PickleballGameManager : MonoBehaviour
 
     private void Start()
     {
-        // We do NOT start the game automatically anymore.
-        // We wait for the Menu to call StartNewGame.
-        Debug.Log("Game Manager Ready. Waiting for Menu...");
+        Debug.Log("Game Manager Ready. Waiting for Menu to start game...");
     }
 
-    // Public function called by the Menu button
+    // --- GAME FLOW START ---
+
     public void StartNewGame(bool aiStartsServing)
     {
         player1Score = 0;
@@ -93,56 +91,83 @@ public class PickleballGameManager : MonoBehaviour
         StartCoroutine(SetupServe(isPlayer1Serving));
     }
 
+    // --- CORE LOGIC: SERVE SETUP ---
+
     private IEnumerator SetupServe(bool player1Serves)
     {
+        // 1. Wait a moment so the previous point can settle visually
         yield return new WaitForSeconds(2.0f);
 
-        if (currentBall != null) Destroy(currentBall);
-
-        Transform servePos;
+        // 2. Determine where the ball should float
+        Transform serveTransform;
         if (player1Serves)
         {
-            servePos = isPlayer1ServingRightSide ? player1RightServePos : player1LeftServePos;
+            serveTransform = isPlayer1ServingRightSide ? player1RightServePos : player1LeftServePos;
         }
         else
         {
-            servePos = isPlayer2ServingRightSide ? player2RightServePos : player2LeftServePos;
+            serveTransform = isPlayer2ServingRightSide ? player2RightServePos : player2LeftServePos;
         }
 
-        currentBall = Instantiate(ballPrefab, servePos.position, servePos.rotation);
+        // 3. Ensure the ball exists
+        if (currentBall == null)
+        {
+            currentBall = Instantiate(ballPrefab, serveTransform.position, serveTransform.rotation);
 
-        // --- APPLY DRAG SETTING ---
+            // Assign ball to AI so it knows what to hit
+            if (aiOpponent != null)
+            {
+                aiOpponent.AssignBall(currentBall);
+            }
+        }
+
+        // 4. Update Physics Settings (Drag/Damping)
         Rigidbody ballRb = currentBall.GetComponent<Rigidbody>();
         if (ballRb != null)
         {
-            // Using .drag is safe for Unity 2020, 2021, 2022, and 6
+            // Unity 6 uses linearDamping. Older versions use drag.
             ballRb.linearDamping = ballDrag;
         }
 
-        // Tell AI about the ball
-        if (aiOpponent != null)
+        // 5. RESET THE BALL TO FLOATING STATE
+        // This connects to your new BallController script!
+        BallController bCtrl = currentBall.GetComponent<BallController>();
+        if (bCtrl != null)
         {
-            aiOpponent.AssignBall(currentBall);
+            bCtrl.ResetToPosition(serveTransform.position);
+        }
+        else
+        {
+            // Fallback if script is missing: just move it
+            currentBall.transform.position = serveTransform.position;
+            ballRb.linearVelocity = Vector3.zero;
         }
 
+        // 6. Reset Turn Logic
         pointInProgress = true;
         isServing = true;
         bounceCount = 0;
         lastPaddleHit = null;
+
+        Debug.Log($"Serve Setup Complete. Server: {(player1Serves ? "Player 1" : "AI")}");
     }
+
+    // --- GAMEPLAY EVENTS ---
 
     public void BallHitPaddle(GameObject paddle)
     {
         if (!pointInProgress) return;
+
         lastPaddleHit = paddle;
-        isServing = false;
-        bounceCount = 0;
+        isServing = false; // The moment a paddle hits, the serve "shot" is over
+        bounceCount = 0;   // Reset bounce count on every hit
     }
 
     public void BallHitGround(Collider groundZone)
     {
         if (!pointInProgress) return;
 
+        // 1. Check Out of Bounds
         if (groundZone == outOfBoundsZone)
         {
             Debug.Log("FAULT: Out of Bounds!");
@@ -150,6 +175,7 @@ public class PickleballGameManager : MonoBehaviour
             return;
         }
 
+        // 2. Check Serve Faults (Wrong Box / Kitchen)
         if (isServing)
         {
             if (groundZone == player1Kitchen || groundZone == player2Kitchen)
@@ -160,6 +186,7 @@ public class PickleballGameManager : MonoBehaviour
             }
 
             bool validServe = false;
+            // Validate Diagonal Serves
             if (isPlayer1Serving)
             {
                 if (isPlayer1ServingRightSide && groundZone == player2RightCourt) validServe = true;
@@ -177,27 +204,41 @@ public class PickleballGameManager : MonoBehaviour
                 AwardPointToOpponent(null);
                 return;
             }
+
+            // If we land safely in the correct box, the serve phase ends
             isServing = false;
         }
 
+        // 3. Handle Bounces
         bounceCount++;
 
         bool isP1Side = (groundZone == player1RightCourt || groundZone == player1LeftCourt || groundZone == player1Kitchen);
         bool isP2Side = (groundZone == player2RightCourt || groundZone == player2LeftCourt || groundZone == player2Kitchen);
 
+        // Double Bounce Rule
         if (bounceCount >= 2)
         {
             Debug.Log("POINT: Double Bounce!");
+            // The person who HIT the ball last wins the point
             AwardPointToHitter(lastPaddleHit);
             return;
         }
 
+        // 4. Check if ball landed on hitter's own side (e.g. hit net and fell back)
         if (bounceCount == 1)
         {
-            if (lastPaddleHit == player1Paddle && isP1Side) AwardPointToOpponent(player1Paddle);
-            else if (lastPaddleHit == player2Paddle && isP2Side) AwardPointToOpponent(player2Paddle);
+            if (lastPaddleHit == player1Paddle && isP1Side)
+            {
+                AwardPointToOpponent(player1Paddle);
+            }
+            else if (lastPaddleHit == player2Paddle && isP2Side)
+            {
+                AwardPointToOpponent(player2Paddle);
+            }
         }
     }
+
+    // --- SCORING LOGIC ---
 
     private void AwardPointToHitter(GameObject hitter)
     {
@@ -205,39 +246,52 @@ public class PickleballGameManager : MonoBehaviour
 
         if (hitter == player1Paddle)
         {
-            player1Score++;
-            isPlayer1Serving = true;
-            isPlayer1ServingRightSide = !isPlayer1ServingRightSide;
+            HandleScore(true);
         }
         else
         {
-            player2Score++;
-            isPlayer1Serving = false;
-            isPlayer2ServingRightSide = !isPlayer2ServingRightSide;
+            HandleScore(false);
         }
-
-        UpdateScoreUI();
-        StartCoroutine(SetupServe(isPlayer1Serving));
     }
 
     private void AwardPointToOpponent(GameObject hitter)
     {
         pointInProgress = false;
 
+        // If P1 messed up, P2 wins point (or side out logic)
+        // Note: Simplified logic (Rally Scoring vs Side Out). 
+        // This assumes basic scoring where winning a rally gives a point or changes server.
+
         if (isPlayer1Serving)
         {
-            player2Score++;
-            isPlayer1Serving = false;
-            isPlayer2ServingRightSide = !isPlayer2ServingRightSide;
+            // P1 was serving but lost. P2 scores/serves.
+            HandleScore(false);
         }
         else
         {
+            // P2 was serving but lost. P1 scores/serves.
+            HandleScore(true);
+        }
+    }
+
+    private void HandleScore(bool player1WonPoint)
+    {
+        if (player1WonPoint)
+        {
             player1Score++;
             isPlayer1Serving = true;
-            isPlayer1ServingRightSide = !isPlayer1ServingRightSide;
+            isPlayer1ServingRightSide = !isPlayer1ServingRightSide; // Switch sides
+        }
+        else
+        {
+            player2Score++;
+            isPlayer1Serving = false;
+            isPlayer2ServingRightSide = !isPlayer2ServingRightSide; // Switch sides
         }
 
         UpdateScoreUI();
+
+        // RESTART THE LOOP
         StartCoroutine(SetupServe(isPlayer1Serving));
     }
 
