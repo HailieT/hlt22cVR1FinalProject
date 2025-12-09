@@ -5,6 +5,11 @@ public class BallController : MonoBehaviour
 {
     private PickleballGameManager gameManager;
     private Rigidbody rb;
+    private bool hasServed = false;
+
+    // NEW: Prevents instant collisions when spawning inside a paddle
+    private float spawnTime;
+    private const float SPAWN_PROTECTION_TIME = 1.0f;
 
     private void Awake()
     {
@@ -20,43 +25,56 @@ public class BallController : MonoBehaviour
     public void ResetToPosition(Vector3 startPosition)
     {
         transform.position = startPosition;
+        spawnTime = Time.time; // Mark the time we spawned
+
+        // Stop movement
         rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
+        // FLOAT MODE:
+        // isKinematic = FALSE (so it detects hits)
+        // useGravity = FALSE (so it floats)
+        rb.isKinematic = false;
         rb.useGravity = false;
-        rb.isKinematic = true;
+
+        hasServed = false;
     }
 
     public void LaunchBall(Vector3 forceVector)
     {
+        if (hasServed) return;
+        hasServed = true;
+
+        // Enable real physics
         rb.useGravity = true;
         rb.isKinematic = false;
-        if (forceVector != Vector3.zero) rb.AddForce(forceVector, ForceMode.Impulse);
+
+        if (forceVector != Vector3.zero)
+        {
+            rb.AddForce(forceVector, ForceMode.Impulse);
+        }
     }
 
     private void OnCollisionEnter(Collision collision)
     {
         if (gameManager == null) return;
 
+        // --- FIX 1: IGNORE COLLISIONS FOR 1 SECOND ---
+        // This prevents the ball from dropping instantly if it spawns touching a paddle
+        if (Time.time < spawnTime + SPAWN_PROTECTION_TIME) return;
+
         GameObject hitObj = collision.gameObject;
 
-        // --- DEBUGGER ---
-        // Look at your Console! It will tell you exactly what you hit.
-        Debug.Log("Ball Hit: " + hitObj.name);
-
-        // 1. Check Paddles
-        if (hitObj == gameManager.player1Paddle)
+        // If we are floating and get hit by a Paddle, Launch!
+        if (!rb.useGravity && (hitObj.CompareTag("Paddle") || hitObj.GetComponent<PaddleForceBooster>() != null))
         {
-            gameManager.BallHitPaddle(gameManager.player1Paddle);
-            return;
-        }
-        if (hitObj == gameManager.player2Paddle)
-        {
-            gameManager.BallHitPaddle(gameManager.player2Paddle);
-            return;
+            LaunchBall(Vector3.zero);
         }
 
-        // 2. Check Court Zones
-        // IMPORTANT: We check if the hit object IS the zone, OR is a CHILD of the zone
-        if (IsZone(hitObj, gameManager.player1RightCourt)) gameManager.BallHitGround(gameManager.player1RightCourt);
+        // Standard Logic
+        if (hitObj == gameManager.player1Paddle) gameManager.BallHitPaddle(hitObj);
+        else if (hitObj == gameManager.player2Paddle) gameManager.BallHitPaddle(hitObj);
+        else if (IsZone(hitObj, gameManager.player1RightCourt)) gameManager.BallHitGround(gameManager.player1RightCourt);
         else if (IsZone(hitObj, gameManager.player1LeftCourt)) gameManager.BallHitGround(gameManager.player1LeftCourt);
         else if (IsZone(hitObj, gameManager.player1Kitchen)) gameManager.BallHitGround(gameManager.player1Kitchen);
         else if (IsZone(hitObj, gameManager.player2RightCourt)) gameManager.BallHitGround(gameManager.player2RightCourt);
@@ -65,14 +83,11 @@ public class BallController : MonoBehaviour
         else if (IsZone(hitObj, gameManager.outOfBoundsZone)) gameManager.BallHitGround(gameManager.outOfBoundsZone);
     }
 
-    // Helper to check if the object we hit is the zone OR part of the zone
     private bool IsZone(GameObject hitObj, Collider zoneCollider)
     {
         if (zoneCollider == null) return false;
-        // Check if we hit the collider directly
         if (hitObj == zoneCollider.gameObject) return true;
-        // Check if the hit object is a child of the zone transform
-        if (hitObj.transform.IsChildOf(zoneCollider.transform)) return true;
+        if (hitObj.transform.parent == zoneCollider.transform) return true;
         return false;
     }
 }

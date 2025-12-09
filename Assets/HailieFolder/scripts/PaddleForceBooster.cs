@@ -1,31 +1,41 @@
 using UnityEngine;
 
-// Attach this to your VR Paddle. 
-// It adds a little extra "pop" to the ball when you hit it.
-
 public class PaddleForceBooster : MonoBehaviour
 {
     [Tooltip("Multiplies the force of your hit. 1.2 = 20% harder.")]
-    public float forceMultiplier = 1.3f;
+    public float forceMultiplier = 1.2f; // Reduced slightly for safety
 
-    [Tooltip("The maximum speed the ball is allowed to travel. Prevents it from glitching through walls.")]
-    public float maxBallSpeed = 15f; // 15-20 is usually a good "Fast" speed in Unity meters
+    [Tooltip("The maximum speed the ball is allowed to travel.")]
+    public float maxBallSpeed = 15f;
+
+    // NEW: Debounce timer to prevent double-hits
+    private float lastHitTime = 0f;
+    private const float MIN_HIT_INTERVAL = 0.25f; // Must wait 0.25s between boosts
 
     private void OnCollisionEnter(Collision collision)
     {
-        // Check if we hit the ball
-        // Ensure your Ball prefab is tagged "Ball" in the Inspector!
         if (collision.gameObject.CompareTag("Ball"))
         {
+            // 1. COOLDOWN CHECK
+            // If we just hit the ball 0.01 seconds ago, ignore this collision.
+            if (Time.time - lastHitTime < MIN_HIT_INTERVAL) return;
+
             Rigidbody ballRb = collision.gameObject.GetComponent<Rigidbody>();
             if (ballRb != null)
             {
-                // 1. Apply the multiplier to the ball's current velocity
+                // Update the hit time
+                lastHitTime = Time.time;
+
+                // 2. Apply the boost
                 ballRb.linearVelocity *= forceMultiplier;
 
-                // 2. NEW: Clamp the magnitude (speed) to prevent physics glitches
-                // This ensures the ball never moves faster than 'maxBallSpeed'
-                ballRb.linearVelocity = Vector3.ClampMagnitude(ballRb.linearVelocity, maxBallSpeed);
+                // 3. CLAMP SPEED (Stop the skyrocketing)
+                if (ballRb.linearVelocity.magnitude > maxBallSpeed)
+                {
+                    ballRb.linearVelocity = Vector3.ClampMagnitude(ballRb.linearVelocity, maxBallSpeed);
+                }
+
+                Debug.Log($"Boosted Ball! Speed: {ballRb.linearVelocity.magnitude}");
             }
         }
     }
