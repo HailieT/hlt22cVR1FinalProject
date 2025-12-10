@@ -12,7 +12,7 @@ I am particularly proud that the start button now works within the game as that 
 
         Screenshots of your project
 HOW?!?!?!?!
-<img src="Screenshot\ 2025-12-08\ 134553.png" width="500" alt="Gameplay Screenshot 1">
-<img src="Screenshot\ 2025-12-08\ 134613.png" width="500" alt="Gameplay Screenshot 2">
-<img src="Screenshot\ 2025-12-08\ 134633.png" width="500" alt="Gameplay Screenshot 3">
-<img src="Screenshot\ 2025-12-08\ 134649.png" width="500" alt="Gameplay Screenshot 4">
+<img src="Screenshot%202025-12-08%20134553.png" width="500" alt="Gameplay Screenshot 1">
+<img src="Screenshot%202025-12-08%20134613.png" width="500" alt="Gameplay Screenshot 2">
+<img src="Screenshot%202025-12-08%20134633.png" width="500" alt="Gameplay Screenshot 3">
+<img src="Screenshot%202025-12-08%20134649.png" width="500" alt="Gameplay Screenshot 4">
