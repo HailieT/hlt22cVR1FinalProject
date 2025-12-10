@@ -37,10 +37,6 @@ public class GameManager : MonoBehaviour
         // Handle state-specific actions
         switch (newState)
         {
-            case GameState.MainMenu:
-                // Load main menu scene, enable menu UI, etc.
-                SceneManager.LoadScene("MainMenuScene");
-                break;
             case GameState.Playing:
                 // Load game scene, disable menu UI, enable gameplay elements
                 SceneManager.LoadScene("GameScene");

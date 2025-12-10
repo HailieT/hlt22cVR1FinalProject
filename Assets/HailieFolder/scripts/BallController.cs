@@ -5,16 +5,19 @@ public class BallController : MonoBehaviour
 {
     private PickleballGameManager gameManager;
     private Rigidbody rb;
-    private bool hasServed = false;
+    private bool isPlayable = false; // Is ball currently active?
 
-    // NEW: Prevents instant collisions when spawning inside a paddle
+    // Prevents instant collisions right after spawning
     private float spawnTime;
-    private const float SPAWN_PROTECTION_TIME = 1.0f;
+    private const float SPAWN_PROTECTION_TIME = 0.5f;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+
+        // IMPORTANT: We turn off Unity gravity to use our Custom Slow-Motion Gravity
+        rb.useGravity = false;
     }
 
     private void Start()
@@ -22,32 +25,43 @@ public class BallController : MonoBehaviour
         gameManager = PickleballGameManager.Instance;
     }
 
+    private void FixedUpdate()
+    {
+        if (gameManager == null) return;
+
+        // Apply Custom Gravity only if the ball is in play (not frozen for serve)
+        if (isPlayable && !rb.isKinematic)
+        {
+            // Apply downward force based on GameManager settings
+            Vector3 gravityForce = Vector3.down * gameManager.currentGravity;
+            rb.AddForce(gravityForce, ForceMode.Acceleration);
+
+            // Clamp Speed (Prevent it from moving too fast)
+            float limit = gameManager.maxBallSpeed;
+            if (rb.linearVelocity.magnitude > limit)
+            {
+                rb.linearVelocity = Vector3.ClampMagnitude(rb.linearVelocity, limit);
+            }
+        }
+    }
+
     public void ResetToPosition(Vector3 startPosition)
     {
         transform.position = startPosition;
-        spawnTime = Time.time; // Mark the time we spawned
+        spawnTime = Time.time;
 
-        // Stop movement
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
-        // FLOAT MODE:
-        // isKinematic = FALSE (so it detects hits)
-        // useGravity = FALSE (so it floats)
-        rb.isKinematic = false;
-        rb.useGravity = false;
-
-        hasServed = false;
+        // FREEZE PHYSICS so it doesn't drop
+        rb.isKinematic = true;
+        isPlayable = false;
     }
 
     public void LaunchBall(Vector3 forceVector)
     {
-        if (hasServed) return;
-        hasServed = true;
-
-        // Enable real physics
-        rb.useGravity = true;
-        rb.isKinematic = false;
+        isPlayable = true;
+        rb.isKinematic = false; // Enable movement
 
         if (forceVector != Vector3.zero)
         {
@@ -58,20 +72,17 @@ public class BallController : MonoBehaviour
     private void OnCollisionEnter(Collision collision)
     {
         if (gameManager == null) return;
-
-        // --- FIX 1: IGNORE COLLISIONS FOR 1 SECOND ---
-        // This prevents the ball from dropping instantly if it spawns touching a paddle
         if (Time.time < spawnTime + SPAWN_PROTECTION_TIME) return;
 
         GameObject hitObj = collision.gameObject;
 
-        // If we are floating and get hit by a Paddle, Launch!
-        if (!rb.useGravity && (hitObj.CompareTag("Paddle") || hitObj.GetComponent<PaddleForceBooster>() != null))
+        // If ball was frozen (waiting for serve) and gets hit by paddle, Launch it!
+        if (!isPlayable && (hitObj.CompareTag("Paddle") || hitObj.GetComponent<PaddleForceBooster>() != null))
         {
             LaunchBall(Vector3.zero);
         }
 
-        // Standard Logic
+        // Report collisions to Manager
         if (hitObj == gameManager.player1Paddle) gameManager.BallHitPaddle(hitObj);
         else if (hitObj == gameManager.player2Paddle) gameManager.BallHitPaddle(hitObj);
         else if (IsZone(hitObj, gameManager.player1RightCourt)) gameManager.BallHitGround(gameManager.player1RightCourt);
@@ -87,6 +98,7 @@ public class BallController : MonoBehaviour
     {
         if (zoneCollider == null) return false;
         if (hitObj == zoneCollider.gameObject) return true;
+        // Check parent incase collider is a child object
         if (hitObj.transform.parent == zoneCollider.transform) return true;
         return false;
     }

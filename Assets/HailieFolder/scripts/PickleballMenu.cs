@@ -3,41 +3,41 @@ using TMPro;
 
 public class PickleballMenu : MonoBehaviour
 {
-    [Header("UI Feedback (Optional)")]
-    public TextMeshPro statusText; // Assign a 3D text object here to show "Normal Mode Selected" etc.
+    [Header("UI Feedback")]
+    public TextMeshPro statusText;
 
     private void Start()
     {
-        if (statusText != null) statusText.text = "Select Difficulty";
+        if (statusText != null) statusText.text = "Select Mode";
     }
 
     public void SetEasyMode()
     {
-        // Easy Mode = Drag 1.0 (Ball slows down fast)
-        PickleballGameManager.Instance.ballDrag = 1.0f;
+        // Activates Slow Motion / Moon Gravity
+        PickleballGameManager.Instance.SetDifficulty(true);
 
-        Debug.Log("Difficulty Set: EASY (Drag 1.0)");
-        if (statusText != null) statusText.text = "Mode: EASY";
+        Debug.Log("Mode: EASY (Slow Motion)");
+        if (statusText != null) statusText.text = "Mode: SLOW MOTION";
     }
 
     public void SetNormalMode()
     {
-        // Normal Mode = Drag 0.5 (Ball flies normally)
-        PickleballGameManager.Instance.ballDrag = 0.5f;
+        // Activates Earth Gravity
+        PickleballGameManager.Instance.SetDifficulty(false);
 
-        Debug.Log("Difficulty Set: NORMAL (Drag 0.5)");
-        if (statusText != null) statusText.text = "Mode: NORMAL";
+        Debug.Log("Mode: REALISTIC");
+        if (statusText != null) statusText.text = "Mode: REALISTIC";
     }
 
     public void StartMatch()
     {
-        // Start the game, passing 'true' to make the AI serve first
         Debug.Log("Starting Match...");
         if (statusText != null) statusText.text = "Match Started!";
 
-        // Hide the menu buttons (Optional: attach the parent of the buttons to this script to disable them)
-        // gameObject.SetActive(false); 
-
+        // Start game, AI serves first
         PickleballGameManager.Instance.StartNewGame(true);
+
+        // Optional: Hide menu here
+        // gameObject.SetActive(false);
     }
 }

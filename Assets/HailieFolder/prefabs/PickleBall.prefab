@@ -64,6 +64,10 @@ PrefabInstance:
       propertyPath: m_ConstrainProportionsScale
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: c79ddba77abce7444ad5b80d0153702c, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 09086fd9a10c72049a96fd799749c8af, type: 2}
     - target: {fileID: 919132149155446097, guid: c79ddba77abce7444ad5b80d0153702c, type: 3}
       propertyPath: m_Name
       value: PickleBall
@@ -79,6 +83,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c79ddba77abce7444ad5b80d0153702c, type: 3}
       insertIndex: -1
       addedObject: {fileID: 39703711086433898}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c79ddba77abce7444ad5b80d0153702c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -3470293365064030208}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c79ddba77abce7444ad5b80d0153702c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -6722055831493794618}
   m_SourcePrefab: {fileID: 100100000, guid: c79ddba77abce7444ad5b80d0153702c, type: 3}
 --- !u!1 &1188416617303849479 stripped
 GameObject:
@@ -106,3 +116,42 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.009999997
   m_Center: {x: -0.0000000032596286, y: 0.0000000032596341, z: 0.000000086613}
+--- !u!54 &-3470293365064030208
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1188416617303849479}
+  serializedVersion: 4
+  m_Mass: 1
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 2
+--- !u!114 &-6722055831493794618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1188416617303849479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f53a79c3a44bbb9468a85540228505c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

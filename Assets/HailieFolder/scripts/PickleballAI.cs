@@ -6,11 +6,12 @@ public class PickleballAI : MonoBehaviour
     [Header("AI Settings")]
     public float movementSpeed = 3.5f;
     public float serveDelay = 1.0f;
-    public float arcHeight = 1.8f;
+    public float arcHeight = 2.0f;
 
-    [Header("Serve Targets")]
+    [Header("Targets")]
     public Transform leftCourtTarget;
     public Transform rightCourtTarget;
+    public Transform restingPosition; // Create an empty GameObject behind the court for this
 
     private GameObject currentBall;
     private Rigidbody rb;
@@ -19,10 +20,9 @@ public class PickleballAI : MonoBehaviour
     private void Start()
     {
         rb = GetComponent<Rigidbody>();
-        // Ensure AI paddle doesn't fall over
         if (rb != null)
         {
-            rb.isKinematic = true;
+            rb.isKinematic = true; // AI Paddle must not fall
             rb.useGravity = false;
         }
     }
@@ -33,35 +33,53 @@ public class PickleballAI : MonoBehaviour
 
         Vector3 ballPos = currentBall.transform.position;
 
-        // Infinity Check (prevents crash)
-        if (float.IsNaN(ballPos.x) || float.IsInfinity(ballPos.x)) return;
+        // SAFETY CHECK: If ball position is invalid (NaN), do nothing.
+        if (HasNaNs(ballPos)) return;
 
         if (IsMyServe())
         {
             if (!isServingRoutineRunning) StartCoroutine(PerformServe());
 
-            // Hover safely behind ball
-            Vector3 hoverPos = ballPos;
-            hoverPos.z += 0.5f;
-            MovePaddle(hoverPos);
+            // Hover safely behind ball while waiting
+            Vector3 hoverPos = ballPos + new Vector3(0, 0, 0.5f);
+            SmoothMove(hoverPos);
         }
         else
         {
-            MovePaddle(ballPos);
+            // Simple Logic: If ball coming to my side (Z > 0), move to it.
+            // Adjust '0' based on where your net is.
+            if (ballPos.z > 0)
+            {
+                SmoothMove(ballPos);
+            }
+            else if (restingPosition != null)
+            {
+                SmoothMove(restingPosition.position);
+            }
         }
     }
 
-    private void MovePaddle(Vector3 targetPos)
+    private void SmoothMove(Vector3 targetPos)
     {
-        Vector3 newPos = Vector3.MoveTowards(transform.position, targetPos, movementSpeed * Time.fixedDeltaTime);
+        // SAFETY CHECK: Don't move to infinity
+        if (HasNaNs(targetPos)) return;
 
-        // Clamp to court boundaries
-        newPos.y = Mathf.Clamp(newPos.y, 0.5f, 2.5f);
-        newPos.z = Mathf.Clamp(newPos.z, 0.5f, 15.0f);
-        newPos.x = Mathf.Clamp(newPos.x, -10f, 10f);
+        // Constraint movement to court area (Adjust values for your specific court size)
+        targetPos.x = Mathf.Clamp(targetPos.x, -5f, 5f);
+        targetPos.y = Mathf.Clamp(targetPos.y, 0.5f, 2.5f);
+        targetPos.z = Mathf.Clamp(targetPos.z, 0.5f, 12f); // Don't go past net
 
-        if (rb != null) rb.MovePosition(newPos);
-        else transform.position = newPos;
+        // Lerp for smooth non-jittery movement
+        Vector3 smoothedPos = Vector3.Lerp(transform.position, targetPos, movementSpeed * Time.fixedDeltaTime);
+
+        if (rb != null) rb.MovePosition(smoothedPos);
+        else transform.position = smoothedPos;
+    }
+
+    private bool HasNaNs(Vector3 v)
+    {
+        return float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) ||
+               float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z);
     }
 
     public void AssignBall(GameObject ball)
@@ -73,10 +91,8 @@ public class PickleballAI : MonoBehaviour
     private bool IsMyServe()
     {
         if (currentBall == null) return false;
-
-        // --- FIX 2: Check Gravity, NOT Kinematic ---
-        // If ball is floating (Gravity OFF) and on my side (Z > 0), it's my serve.
-        return currentBall.transform.position.z > 0 && !currentBall.GetComponent<Rigidbody>().useGravity;
+        // If ball is kinematic (frozen), it's a serve situation
+        return currentBall.GetComponent<Rigidbody>().isKinematic;
     }
 
     private IEnumerator PerformServe()
@@ -84,29 +100,25 @@ public class PickleballAI : MonoBehaviour
         isServingRoutineRunning = true;
         yield return new WaitForSeconds(serveDelay);
 
-        // Double check we still have the ball and it's floating
-        if (currentBall != null && !currentBall.GetComponent<Rigidbody>().useGravity)
+        if (currentBall != null && currentBall.GetComponent<Rigidbody>().isKinematic)
         {
             Transform target = (Random.value > 0.5f) ? leftCourtTarget : rightCourtTarget;
             Vector3 targetPos = (target != null) ? target.position : new Vector3(0, 0, -5);
 
-            // Calculate Shot
+            // Calculate trajectory
             Vector3 finalVelocity = CalculateParabola(currentBall.transform.position, targetPos, arcHeight);
 
-            // Fallback if Arc fails
-            if (float.IsNaN(finalVelocity.x) || finalVelocity == Vector3.zero)
+            // If Math failed, use a simple fallback hit
+            if (HasNaNs(finalVelocity) || finalVelocity == Vector3.zero)
             {
-                finalVelocity = (targetPos - currentBall.transform.position).normalized * 10f; // Line Drive
-                finalVelocity += Vector3.up * 2f; // Slight lift
+                finalVelocity = (targetPos - currentBall.transform.position).normalized * 5f + Vector3.up * 2f;
             }
 
-            // Execute
             BallController bCtrl = currentBall.GetComponent<BallController>();
             if (bCtrl != null)
             {
-                // Force launch because we are bypassing collision
-                bCtrl.LaunchBall(Vector3.zero);
-                currentBall.GetComponent<Rigidbody>().linearVelocity = finalVelocity;
+                bCtrl.LaunchBall(Vector3.zero); // Activate Physics
+                currentBall.GetComponent<Rigidbody>().linearVelocity = finalVelocity; // Apply Shot
             }
         }
         isServingRoutineRunning = false;
@@ -114,19 +126,28 @@ public class PickleballAI : MonoBehaviour
 
     private Vector3 CalculateParabola(Vector3 start, Vector3 end, float height)
     {
-        float gravity = Physics.gravity.y;
+        // VITAL: Get gravity from Manager so AI understands Slow Motion
+        float gravity = -PickleballGameManager.Instance.currentGravity;
+
+        // Safety for divide by zero
+        if (Mathf.Abs(gravity) < 0.01f) gravity = -1.0f;
+
         float displacementY = end.y - start.y;
         Vector3 displacementXZ = new Vector3(end.x - start.x, 0, end.z - start.z);
 
-        if (gravity >= 0) return Vector3.zero;
-
         if (displacementY > height) height = displacementY + 0.5f;
 
-        float timeUp = Mathf.Sqrt(-2 * height / gravity);
-        float timeDown = Mathf.Sqrt(2 * (displacementY - height) / gravity);
+        float term1 = -2 * height / gravity;
+        float term2 = 2 * (displacementY - height) / gravity;
+
+        // Negative Sqrt check
+        if (term1 < 0 || term2 < 0) return Vector3.zero;
+
+        float timeUp = Mathf.Sqrt(term1);
+        float timeDown = Mathf.Sqrt(term2);
         float totalTime = timeUp + timeDown;
 
-        if (float.IsNaN(totalTime) || totalTime < 0.1f) return Vector3.zero;
+        if (totalTime < 0.1f) return Vector3.zero;
 
         Vector3 velocityY = Vector3.up * Mathf.Sqrt(-2 * gravity * height);
         Vector3 velocityXZ = displacementXZ / totalTime;
