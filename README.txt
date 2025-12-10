@@ -18,3 +18,5 @@ HOW?!?!?!?!
 <img src="./screenshots/Image2.png" width="500" alt="Gameplay Screenshot 4">
 
 ![test](https://github.com/HailieT/hlt22cVR1FinalProject/blob/main/screenshots/Image1.png)
+
+screenshots on itch https://hailiet.itch.io/vrpickleball
