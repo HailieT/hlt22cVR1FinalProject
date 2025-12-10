@@ -17,4 +17,4 @@ HOW?!?!?!?!
 <img src="./screenshots/Image2.png" width="500" alt="Gameplay Screenshot 3">
 <img src="./screenshots/Image2.png" width="500" alt="Gameplay Screenshot 4">
 
-![alt text](https://github.com/HailieT/hlt22cVR1FinalProject/blob/main/screenshots/Image1.png "Logo Title Text 1")
+!(https://github.com/HailieT/hlt22cVR1FinalProject/blob/main/screenshots/Image1.png)
